@@ -10,6 +10,7 @@ import os
 import re
 import sqlite3
 import time
+from markupsafe import escape
 
 from flask import Flask, Response, g, jsonify, render_template_string, request
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -148,10 +149,14 @@ def portada():
 def hello():
     """!
     @brief Saluda al usuario cuyo nombre llega en el parámetro de URL «name».
-    @return Página HTML con el saludo.
+    @return Página HTML con el saludo escapado.
     """
-    name = request.args.get("name", "visitante")
-    return f"<h1>Hola, {name}!</h1>"
+    name = escape(request.args.get("name", "visitante"))
+    return (
+        "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\">"
+        "<title>Saludo</title></head><body>"
+        f"<h1>Hola, {name}!</h1></body></html>"
+    )
 
 
 @app.route("/health")
