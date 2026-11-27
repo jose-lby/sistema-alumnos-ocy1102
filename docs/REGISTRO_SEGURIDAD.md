@@ -65,10 +65,14 @@ Estudiante: José Luis Lebuy Narváez   Repositorio: https://github.com/jose-lby
 
 ## 6. Trazabilidad
 
-Pega aquí (o adjunta) el `TRAZABILIDAD.md` del último build y completa un recorrido por cada actividad del pipeline:
+### Historial completo de builds (`TRAZABILIDAD.md`)
+
+(Pega aquí la tabla completa copiada desde reports/TRAZABILIDAD.md de Jenkins)
+
+### Recorrido por actividad del pipeline
 
 | Actividad | Hallazgo | Build que lo detectó | Commit / PR que lo resolvió | Build que lo verificó | Versión en producción |
 |---|---|---|---|---|---|
-| Revisión de seguridad (Bandit) | | #__ | | #__ | |
-| Prueba automatizada (OWASP ZAP) | | #__ | | #__ | |
-| Gestión de dependencias (Dependabot) | | #__ | PR #__ | #__ | |
+| Revisión de seguridad (Bandit) | SQLi (B608), hash MD5 (B324), `debug=True` (B201), bind `0.0.0.0` (B104) y secreto fijo (B105) | #3 | `VULN-01` (`<hash>`), `VULN-03` (`<hash>`), `VULN-06` (`<hash>`) | #4 | `1.0.<build>+<sha>` |
+| Prueba automatizada (OWASP ZAP) | XSS Reflected/DOM, SQL Injection, ausencia de Anti-CSRF, CSP, Anti-clickjacking y `X-Content-Type-Options` | #3 | `VULN-01`, `VULN-02`, `VULN-04`, `VULN-05` (`<hash>`) | #4 | `1.0.<build>+<sha>` |
+| Gestión de dependencias (Dependabot) | 19 vulnerabilidades en `Flask`, `Werkzeug`, `Jinja2` y `gunicorn` | #3 | PR #<n> de Dependabot | #5 | `1.0.<build>+<sha>` |
