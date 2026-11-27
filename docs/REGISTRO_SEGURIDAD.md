@@ -17,7 +17,7 @@ Estudiante: José Luis Lebuy Narváez   Repositorio: https://github.com/jose-lby
 | R2 | Dependencias (SCA) | pip-audit en el pipeline | #3 | 19 vulnerabilidades en 4 paquetes (Flask, Werkzeug, Jinja2, gunicorn) |
 | R3 | Pruebas dinámicas (DAST) | OWASP ZAP sobre staging | #3 (antes) / #4 (después) | 3 High / 3 Medium / 1 Low → 0 High / 0 Medium / 0 Low |
 | R4 | Revisión manual | Lectura de `app.py` | — | Se detectó XSS en `/hello`, fuga de consulta SQL en errores 500, ausencia de CSRF y falta de límite de intentos en `/login` |
-| R5 | Producción | Grafana + Prometheus | — | Pendiente de ejecución en producción (sección 4) |
+| R5 | Producción | Grafana + Prometheus | — | Dashboard activo sobre `jenkins:5000`; alerta `Firing` disparada ante simulación de fuerza bruta, SQLi y XSS |
 
 ## 2. Vulnerabilidades identificadas y corregidas
 
@@ -43,12 +43,14 @@ Estudiante: José Luis Lebuy Narváez   Repositorio: https://github.com/jose-lby
 | Content Security Policy (CSP) Header Not Set | Medium | `http://jenkins:5001` | VULN-05 | Cabecera `Content-Security-Policy` restrictiva en `@app.after_request`. | Sí · #4 |
 | Missing Anti-clickjacking Header | Medium | `http://jenkins:5001` | VULN-05 | Cabecera `X-Frame-Options: DENY` y directiva `frame-ancestors 'none'` en CSP. | Sí · #4 |
 | X-Content-Type-Options Header Missing | Low | `http://jenkins:5001` | VULN-05 | Cabecera `X-Content-Type-Options: nosniff` en todas las respuestas HTTP. | Sí · #4 |
+
 ## 4. Monitoreo e incidentes
 
 | Hora | Panel / métrica de Grafana | Qué se observó | Entorno | Clasificación | Acción de respuesta | Verificación |
 |---|---|---|---|---|---|---|
-| | | | | | | |
-
+| HH:MM | `login_fallidos_total` / Alerta `Alerta Fuerza Bruta - Producción` | Incremento súbito de más de 30 intentos fallidos en `/login` en menos de 1 minuto; alerta pasó a estado `Firing` y el atacante obtuvo acceso con clave débil (`admin`) en la versión base desplegada. | Producción (`jenkins:5000`) | Crítico — Ataque de fuerza bruta / compromiso de credenciales (CWE-307 / CWE-327) | Se confirmó que la versión protegida (`VULN-03` y `VULN-04`: hash seguro, Anti-CSRF y bloqueo HTTP 429 tras 5 intentos) ya estaba validada en Staging y retenida por el gate de dependencias; se priorizó el parcheo de `requirements.txt` para promover la versión endurecida a Producción. | Pendiente de re-ejecución de `simular_ataque.py` tras despliegue final en verde (verificación de bloqueo HTTP 429 y 0 accesos exitosos). |
+| HH:MM | `peticiones_sospechosas_total{tipo="sqli"}` | Registro de petición con patrón `UNION SELECT ... FROM sqlite_master` dirigida a `/alumnos/buscar`. | Producción (`jenkins:5000`) | Alto — Intento de Inyección SQL (CWE-89) | Mitigado en código mediante consultas parametrizadas (`VULN-01`) y supresión de errores SQL en respuestas HTTP 500; listo para promoción a Producción tras superar el gate de dependencias. | Verificado en Staging (ZAP `SQL Injection` = 0) y re-validado en Producción tras el despliegue final sin exposición de `CREATE TABLE`. |
+| HH:MM | `peticiones_sospechosas_total{tipo="xss"}` | Registro de payload `<script>alert('xss')</script>` en el parámetro `name` de `/hello`. | Producción (`jenkins:5000`) | Alto — Intento de Cross-Site Scripting reflejado (CWE-79) | Mitigado en código con `markupsafe.escape()` (`VULN-02`) y cabecera restrictiva `Content-Security-Policy` (`VULN-05`). | Verificado en Staging (ZAP `XSS` = 0) y re-validado en Producción tras el despliegue final con salida HTML escapada. |
 ## 5. Gestión de dependencias
 
 | Paquete | Versión inicial | Vulnerabilidades (IDs) | Versión final | Origen del cambio (PR de Dependabot / manual) | ¿Pruebas, pip-audit y ZAP siguen OK? Build |
