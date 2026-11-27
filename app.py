@@ -6,19 +6,22 @@ Además de las rutas de negocio, la app publica métricas para Prometheus en /me
 Las métricas de seguridad (logins fallidos y peticiones sospechosas) se ven en Grafana.
 """
 import secrets
+import hmac
 import os
 import re
 import sqlite3
 import time
 from markupsafe import escape
 from werkzeug.security import check_password_hash, generate_password_hash
-from flask import Flask, Response, g, jsonify, render_template_string, request
+from flask import Flask, Response, g, jsonify, render_template_string, request, session
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 app = Flask(__name__)
 
 ## Clave de la aplicación y credenciales del administrador (desde entorno, sin secretos fijos).
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 ADMIN_USUARIO = os.environ.get("ADMIN_USUARIO", "admin")
 ADMIN_CLAVE_HASH = os.environ.get("ADMIN_CLAVE_HASH") or generate_password_hash(secrets.token_hex(24))
 
@@ -72,6 +75,7 @@ PORTADA = """<!doctype html>
 </form>
 <h2>Acceso administrador</h2>
 <form action="/login" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input name="usuario" value="admin"> <input name="clave" type="password" value="">
   <button type="submit">Entrar</button>
 </form>
@@ -140,13 +144,25 @@ def despues_de_la_peticion(respuesta):
     return respuesta
 
 
+def obtener_csrf_token():
+    """!
+    @brief Genera o recupera el token Anti-CSRF asociado a la sesión actual.
+    @return Token hexadecimal aleatorio.
+    """
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_hex(32)
+        session["csrf_token"] = token
+    return token
+
+
 @app.route("/")
 def portada():
     """!
     @brief Portada HTML con enlaces y formularios del sistema.
     @return Página HTML.
     """
-    return render_template_string(PORTADA, version=VERSION)
+    return render_template_string(PORTADA, version=VERSION, csrf_token=obtener_csrf_token())
 
 
 @app.route("/hello")
@@ -228,6 +244,12 @@ def login():
     @brief Valida las credenciales del administrador con hash seguro y límite de intentos.
     @return JSON con el resultado; 429 si excede el límite, 401 si las credenciales no son válidas.
     """
+    token_enviado = request.form.get("csrf_token", "")
+    token_sesion = session.get("csrf_token", "")
+    if not token_sesion or not hmac.compare_digest(token_enviado, token_sesion):
+        LOGIN_FALLIDOS.inc()
+        app.logger.warning("Petición a /login sin token CSRF válido desde %s", request.remote_addr)
+        return jsonify({"error": "Token CSRF inválido o ausente"}), 403
     ip = request.remote_addr or "desconocida"
     ahora = time.time()
     recientes = [t for t in INTENTOS_LOGIN.get(ip, []) if ahora - t < VENTANA_LOGIN_SEG]
